@@ -217,56 +217,47 @@ public class Program
 
     private static void GetChildren(in CF_CALLBACK_INFO CallbackInfo, in CF_CALLBACK_PARAMETERS CallbackParameters)
     {
-        Console.WriteLine("GetChildren");
-
         var opInfo = CreateOPERATION_INFO(CallbackInfo, CF_OPERATION_TYPE.CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS);
 
         string fullPath = GetLocalFullPath(CallbackInfo);
 
-        if (fullPath == ClientFolder)
+        var path = fullPath == ClientFolder ? ServerFolder : fullPath.Replace(ClientFolder, ServerFolder); ;
+        Console.WriteLine(path);
+
+        var folders = Directory.GetDirectories(path);
+        var files = Directory.GetFiles(path);
+
+        using SafePlaceHolderList infos = new();
+
+        foreach (var folder in folders)
         {
-            Console.WriteLine("RootFolder");
+            var folderInfo = new DirectoryInfo(folder);
 
-            var folders = Directory.GetDirectories(ServerFolder);
-            var files = Directory.GetFiles(ServerFolder);
+            var placeholder = new Placeholder(folderInfo);
 
-            using SafePlaceHolderList infos = new();
-
-            foreach (var folder in folders)
-            {
-                var folderInfo = new DirectoryInfo(folder);
-
-                if (Directory.Exists($"{ClientFolder}\\{folderInfo.Name}"))
-                    continue;
-
-                var placeholder = new Placeholder(folderInfo);
-
-                infos.Add(Styletronix.CloudFilterApi.CreatePlaceholderInfo(placeholder, Guid.NewGuid().ToString()));
-            }
-
-            foreach (var file in files)
-            {
-                var fileInfo = new FileInfo(file);
-                var placeholder = new Placeholder(fileInfo);
-
-                infos.Add(Styletronix.CloudFilterApi.CreatePlaceholderInfo(placeholder, Guid.NewGuid().ToString()));
-            }
-
-            uint total = (uint)infos.Count;
-            CF_OPERATION_PARAMETERS.TRANSFERPLACEHOLDERS TpParam = new()
-            {
-                PlaceholderArray = infos,
-                Flags = CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAGS.CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION,
-                PlaceholderCount = total,
-                PlaceholderTotalCount = total,
-                CompletionStatus = new NTStatus((uint)NTStatus.STATUS_SUCCESS)
-            };
-            CF_OPERATION_PARAMETERS cF_OPERATION_PARAMETERS = CF_OPERATION_PARAMETERS.Create(TpParam);
-            CF_OPERATION_PARAMETERS opParams = cF_OPERATION_PARAMETERS;
-            HRESULT executeResult = CfExecute(opInfo, ref opParams);
+            infos.Add(Styletronix.CloudFilterApi.CreatePlaceholderInfo(placeholder, Guid.NewGuid().ToString()));
         }
 
-        Console.WriteLine(fullPath);
+        foreach (var file in files)
+        {
+            var fileInfo = new FileInfo(file);
+            var placeholder = new Placeholder(fileInfo);
+
+            infos.Add(Styletronix.CloudFilterApi.CreatePlaceholderInfo(placeholder, Guid.NewGuid().ToString()));
+        }
+
+        uint total = (uint)infos.Count;
+        CF_OPERATION_PARAMETERS.TRANSFERPLACEHOLDERS TpParam = new()
+        {
+            PlaceholderArray = infos,
+            Flags = CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAGS.CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION,
+            PlaceholderCount = total,
+            PlaceholderTotalCount = total,
+            CompletionStatus = new NTStatus((uint)NTStatus.STATUS_SUCCESS)
+        };
+        CF_OPERATION_PARAMETERS cF_OPERATION_PARAMETERS = CF_OPERATION_PARAMETERS.Create(TpParam);
+        CF_OPERATION_PARAMETERS opParams = cF_OPERATION_PARAMETERS;
+        HRESULT executeResult = CfExecute(opInfo, ref opParams);
     }
 
     private static void CF_CALLBACK_TYPE_FETCH_DATA(in CF_CALLBACK_INFO CallbackInfo, in CF_CALLBACK_PARAMETERS CallbackParameters)
