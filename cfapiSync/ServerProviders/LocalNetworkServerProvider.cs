@@ -91,7 +91,7 @@ public partial class LocalNetworkServerProvider : IServerFileProvider
     }
 
 
-    public IReadFileAsync GetNewReadFile() { return new ReadFileAsyncInternal(this); }
+    public IReadFileAsync GetNewReadFile() { return new ReadFileAsyncInternal(); }
     public IWriteFileAsync GetNewWriteFile() { return new WriteFileAsyncInternal(this); }
     public IFileListAsync GetNewFileList() { return new FileListAsyncInternal(this); }
 
@@ -351,32 +351,44 @@ public partial class LocalNetworkServerProvider : IServerFileProvider
 
     internal class ReadFileAsyncInternal : IReadFileAsync
     {
-        private readonly LocalNetworkServerProvider provider;
+
+        private static string ClientFolder
+        {
+            get
+            {
+                return @"C:\Users\mateu\ClientFolder2";
+            }
+        }
+
+        private static string ServerFolder
+        {
+            get
+            {
+                return @"C:\Users\mateu\ServerFolder";
+            }
+        }
+
         private FileStream fileStream;
         private OpenAsyncParams openAsyncParams;
-        public ReadFileAsyncInternal(LocalNetworkServerProvider provider)
-        {
-            this.provider = provider;
-        }
 
         public Task<ReadFileOpenResult> OpenAsync(OpenAsyncParams e)
         {
-            if (!provider.CheckProviderStatus())
-            {
-                return Task.FromResult(new ReadFileOpenResult(NtStatus.STATUS_CLOUD_FILE_NETWORK_UNAVAILABLE));
-            }
+            //if (!provider.CheckProviderStatus())
+            //{
+            //    return Task.FromResult(new ReadFileOpenResult(NtStatus.STATUS_CLOUD_FILE_NETWORK_UNAVAILABLE));
+            //}
 
             openAsyncParams = e;
             ReadFileOpenResult openResult = new();
 
-            string fullPath = Path.Combine(provider.Parameter.ServerPath, e.RelativeFileName);
+            string fullPath = Path.Combine(ServerFolder, e.RelativeFileName);
 
-            // Simulate "Offline" if Serverfolder not found.
-            if (!Directory.Exists(provider.Parameter.ServerPath))
-            {
-                openResult.SetException(CloudExceptions.Offline);
-                goto skip;
-            }
+            //// Simulate "Offline" if Serverfolder not found.
+            //if (!Directory.Exists(provider.Parameter.ServerPath))
+            //{
+            //    openResult.SetException(CloudExceptions.Offline);
+            //    goto skip;
+            //}
 
             try
             {
@@ -396,10 +408,10 @@ public partial class LocalNetworkServerProvider : IServerFileProvider
 
         public async Task<ReadFileReadResult> ReadAsync(byte[] buffer, int offsetBuffer, long offset, int count)
         {
-            if (!provider.CheckProviderStatus())
-            {
-                return new ReadFileReadResult(NtStatus.STATUS_CLOUD_FILE_NETWORK_UNAVAILABLE);
-            }
+            //if (!provider.CheckProviderStatus())
+            //{
+            //    return new ReadFileReadResult(NtStatus.STATUS_CLOUD_FILE_NETWORK_UNAVAILABLE);
+            //}
 
             ReadFileReadResult readResult = new();
 
@@ -613,7 +625,7 @@ public partial class LocalNetworkServerProvider : IServerFileProvider
                 try
                 {
                     var att = param.FileInfo.FileAttributes;
-                        att &= ~FileAttributes.ReadOnly;
+                    att &= ~FileAttributes.ReadOnly;
 
                     if (param.FileInfo.FileAttributes > 0) { File.SetAttributes(pFile, att); }
                     if (param.FileInfo.CreationTime > DateTime.MinValue) { File.SetCreationTime(pFile, param.FileInfo.CreationTime); }

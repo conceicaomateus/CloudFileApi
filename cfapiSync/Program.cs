@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Vanara.PInvoke;
 using Windows.Storage.Provider;
+using static LocalNetworkServerProvider;
 using static Styletronix.CloudFilterApi;
 using static Styletronix.CloudFilterApi.SafeHandlers;
 using static Vanara.PInvoke.CldApi;
@@ -14,6 +15,11 @@ namespace Styletronix.cfapiSync;
 
 public class Program
 {
+    private static readonly int StackSize = 1024 * 512; // Buffer size for P/Invoke Call to CFExecute max 1 MB
+    private static readonly int ChunkSize = 1024 * 1024 * 2; // 2MB chunkSize for File Download / Upload
+    public static readonly int MinChunkSize = 4096;
+    public static readonly int MaxChunkSize = int.MaxValue;
+
     public static async Task Main()
     {
         var clientFolderPath = @"C:\Users\mateu\ClientFolder2";
@@ -260,30 +266,6 @@ public class Program
             HRESULT executeResult = CfExecute(opInfo, ref opParams);
         }
 
-        if (fullPath.Contains("teste2.docx"))
-        {
-            var rootFolder = Path.Combine(ServerFolder, "teste2.docx");
-            var clientFile = Path.Combine(ClientFolder, "teste2.docx");
-
-            using (var des = new FileStream(clientFile, FileMode.Open, FileAccess.Write))
-            {
-                using (var content = new FileStream(rootFolder, FileMode.Open, FileAccess.Read))
-                {
-                    content.CopyTo(des);
-                }
-            }
-
-            CF_OPERATION_PARAMETERS.TRANSFERPLACEHOLDERS TpParam = new()
-            {
-                Flags = CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAGS.CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION,
-                CompletionStatus = new NTStatus((uint)NTStatus.STATUS_SUCCESS),
-
-            };
-            CF_OPERATION_PARAMETERS cF_OPERATION_PARAMETERS = CF_OPERATION_PARAMETERS.Create(TpParam);
-            CF_OPERATION_PARAMETERS opParams = cF_OPERATION_PARAMETERS;
-            HRESULT executeResult = CfExecute(opInfo, ref opParams);
-        }
-
         Console.WriteLine(fullPath);
     }
 
@@ -401,6 +383,13 @@ public class Program
         return callbackInfo.NormalizedPath;
     }
 
+    private static int GetChunkSize()
+    {
+        int currentChunkSize = Math.Min(ChunkSize, MaxChunkSize);
+        currentChunkSize = Math.Max(currentChunkSize, MinChunkSize);
+        return currentChunkSize;
+    }
+
     private static async Task FetchDataAsync(FetchRange data)
     {
         var localRootFolderNormalized = ClientFolder.Remove(0, 2);
@@ -448,7 +437,10 @@ public class Program
             {
                 localPlaceholder = new(targetFullPath);
 
-                using IReadFileAsync fetchFile = SyncContext.ServerProvider.GetNewReadFile();
+                var rootFolder = Path.Combine(ServerFolder, "teste2.docx");
+                var clientFile = Path.Combine(ClientFolder, "teste2.docx");
+
+                using IReadFileAsync fetchFile = new ReadFileAsyncInternal();
                 ReadFileOpenResult openAsyncResult = await fetchFile.OpenAsync(new OpenAsyncParams()
                 {
                     RelativeFileName = relativePath,
@@ -485,13 +477,13 @@ public class Program
                     CF_OPERATION_PARAMETERS opParams = CF_OPERATION_PARAMETERS.Create(TpParam);
                     Styletronix.Debug.LogResponse(CfExecute(opInfo, ref opParams));
 
-                    fileRangeManager.Cancel(data.NormalizedPath);
+                    //fileRangeManager.Cancel(data.NormalizedPath);
 
                     localPlaceholder.SetInSyncState(CF_IN_SYNC_STATE.CF_IN_SYNC_STATE_NOT_IN_SYNC);
                     return;
                 }
 
-                byte[] stackBuffer = new byte[stackSize];
+                byte[] stackBuffer = new byte[StackSize];
                 byte[] buffer = new byte[currentChunkSize];
 
                 long minRangeStart = long.MaxValue;
@@ -525,7 +517,7 @@ public class Program
                             });
                             Styletronix.Debug.LogResponse(CfExecute(opInfo, ref opParams));
 
-                            fileRangeManager.Cancel(data.NormalizedPath);
+                            //fileRangeManager.Cancel(data.NormalizedPath);
                             return;
                         }
                         int dataRead = readResult.BytesRead;
@@ -549,7 +541,7 @@ public class Program
                                 {
                                     if (ctx.IsCancellationRequested) { return; }
 
-                                    int realStackSize = Math.Min(stackSize, dataRead - stackTransfered);
+                                    int realStackSize = Math.Min(StackSize, dataRead - stackTransfered);
 
                                     Marshal.Copy(buffer, stackTransfered, (IntPtr)StackBuffer, realStackSize);
 
@@ -575,10 +567,10 @@ public class Program
                             }
                         }
 
-                        fileRangeManager.RemoveRange(data.NormalizedPath, currentRangeStart, currentRangeStart + dataRead);
+                        //fileRangeManager.RemoveRange(data.NormalizedPath, currentRangeStart, currentRangeStart + dataRead);
                     }
 
-                    data = fileRangeManager.TakeNext(data.NormalizedPath);
+                    //data = fileRangeManager.TakeNext(data.NormalizedPath);
                 }
 
                 await fetchFile.CloseAsync();
@@ -601,7 +593,25 @@ public class Program
         catch (Exception ex)
         {
             Styletronix.Debug.WriteLine("FETCH_DATA FAILED " + ex.ToString(), System.Diagnostics.TraceLevel.Error);
-            fileRangeManager.Cancel(data.NormalizedPath);
+            //fileRangeManager.Cancel(data.NormalizedPath);
+        }
+    }
+
+    public static void ReportProviderProgress(CF_TRANSFER_KEY transferKey, long total, long completed, string relativePath)
+    {
+        // Report progress to System
+        HRESULT ret = CfReportProviderProgress(ConnectionKey, transferKey, total, completed);
+        Styletronix.Debug.LogResponse(ret);
+
+
+        // Report progress to components
+        try
+        {
+            //FileProgressEvent?.Invoke(this, new FileProgressEventArgs(relativePath, completed, total));
+        }
+        catch (Exception ex)
+        {
+            Styletronix.Debug.LogException(ex);
         }
     }
 
