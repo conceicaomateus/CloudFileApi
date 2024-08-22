@@ -73,6 +73,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Api\GetRootFolderChildren.cs" />
     <Compile Include="Helpers\AutoResetEventAsync.cs" />
     <Compile Include="Helpers\CloudFilterApi.ExtendedPlaceholderState.cs" />
     <Compile Include="Helpers\Styletronix.Debug.cs" />
