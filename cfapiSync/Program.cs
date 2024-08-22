@@ -10,6 +10,7 @@ using static LocalNetworkServerProvider;
 using static Styletronix.CloudFilterApi;
 using static Styletronix.CloudFilterApi.SafeHandlers;
 using static Vanara.PInvoke.CldApi;
+using static Vanara.PInvoke.Shell32;
 
 namespace Styletronix.cfapiSync;
 
@@ -22,29 +23,26 @@ public class Program
 
     public static async Task Main()
     {
-        var clientFolderPath = @"C:\Users\mateu\ClientFolder2";
-        var serverFolderPath = @"C:\Users\mateu\ServerFolder";
-
         //var syncProvider = new SyncProvider();
 
         // check if exists client folder
-        if (!System.IO.Directory.Exists(clientFolderPath))
+        if (!System.IO.Directory.Exists(ClientFolder))
         {
-            System.IO.Directory.CreateDirectory(clientFolderPath);
+            System.IO.Directory.CreateDirectory(ClientFolder);
         }
 
         // check if exists server folder
-        if (!System.IO.Directory.Exists(serverFolderPath))
+        if (!System.IO.Directory.Exists(ServerFolder))
         {
-            System.IO.Directory.CreateDirectory(serverFolderPath);
+            System.IO.Directory.CreateDirectory(ServerFolder);
         }
 
-        await Register(clientFolderPath);
+        await Register(ClientFolder);
 
         CF_CONNECTION_KEY connectionKey;
 
         HRESULT ret = CfConnectSyncRoot(
-                        clientFolderPath,
+                        ClientFolder,
                         Callbacks,
                         IntPtr.Zero,
                         CF_CONNECT_FLAGS.CF_CONNECT_FLAG_REQUIRE_PROCESS_INFO | CF_CONNECT_FLAGS.CF_CONNECT_FLAG_REQUIRE_FULL_FILE_PATH,
@@ -81,7 +79,7 @@ public class Program
         {
             var windowsUser = System.Security.Principal.WindowsIdentity.GetCurrent().User;
 
-            return $"Optiwork!{windowsUser}!UserWebDav";
+            return $"Optiwork!{windowsUser}!UserWebDav2";
         }
     }
 
@@ -89,7 +87,7 @@ public class Program
     {
         get
         {
-            return @"C:\Users\mateu\ClientFolder2";
+            return @"C:\Users\mateu\ClientFolder3";
         }
     }
 
@@ -193,20 +191,20 @@ public class Program
         {
             Id = SyncRootId,
             AllowPinning = true,
-            DisplayNameResource = "Optiwork Client",
+            DisplayNameResource = "Optiwork Client 2",
             HardlinkPolicy = StorageProviderHardlinkPolicy.None,
-            HydrationPolicy = StorageProviderHydrationPolicy.Partial,
-            HydrationPolicyModifier = StorageProviderHydrationPolicyModifier.AutoDehydrationAllowed | StorageProviderHydrationPolicyModifier.StreamingAllowed,
-            InSyncPolicy = StorageProviderInSyncPolicy.FileLastWriteTime,
+            HydrationPolicy = StorageProviderHydrationPolicy.Full,
+            HydrationPolicyModifier = StorageProviderHydrationPolicyModifier.AutoDehydrationAllowed,
+            InSyncPolicy = StorageProviderInSyncPolicy.Default,
             Path = path,
             PopulationPolicy = StorageProviderPopulationPolicy.Full,
-            ProtectionMode = StorageProviderProtectionMode.Unknown,
             ProviderId = Guid.Parse(GetAssemblyGUID()),
             Version = "1.0",
             IconResource = @"C:\WINDOWS\system32\imageres.dll,-1043",
             ShowSiblingsAsGroup = false,
             RecycleBinUri = null,
-            Context = Windows.Security.Cryptography.CryptographicBuffer.ConvertStringToBinary(SyncRootId, Windows.Security.Cryptography.BinaryStringEncoding.Utf8)
+            Context = Windows.Security.Cryptography.CryptographicBuffer.ConvertStringToBinary(rootFolder, Windows.Security.Cryptography.BinaryStringEncoding.Utf8),
+            ProtectionMode = StorageProviderProtectionMode.Unknown,
         };
         SyncRootInfo.StorageProviderItemPropertyDefinitions.Add(new StorageProviderItemPropertyDefinition() { DisplayNameResource = "Beschreibung", Id = 0 });
 
@@ -258,6 +256,8 @@ public class Program
         CF_OPERATION_PARAMETERS cF_OPERATION_PARAMETERS = CF_OPERATION_PARAMETERS.Create(TpParam);
         CF_OPERATION_PARAMETERS opParams = cF_OPERATION_PARAMETERS;
         HRESULT executeResult = CfExecute(opInfo, ref opParams);
+
+        UpdateUI(ClientFolder);
     }
 
     private static void CF_CALLBACK_TYPE_FETCH_DATA(in CF_CALLBACK_INFO CallbackInfo, in CF_CALLBACK_PARAMETERS CallbackParameters)
@@ -306,12 +306,14 @@ public class Program
     {
         Console.WriteLine("CF_CALLBACK_TYPE_NOTIFY_DELETE");
 
+
         string fullPath = GetLocalFullPath(CallbackInfo);
 
         //if (fullPath == ClientFolder)
         //{
         //    return;
         //}
+
 
         var path = fullPath.Replace(ClientFolder, ServerFolder);
 
@@ -324,12 +326,15 @@ public class Program
             File.Delete(path);
         }
 
-        var opInfo = CreateOPERATION_INFO(CallbackInfo, CF_OPERATION_TYPE.CF_OPERATION_TYPE_ACK_DELETE);
+        CF_OPERATION_INFO opInfo = CreateOPERATION_INFO(CallbackInfo, CF_OPERATION_TYPE.CF_OPERATION_TYPE_ACK_DELETE);
+
         CF_OPERATION_PARAMETERS opParams = CF_OPERATION_PARAMETERS.Create(new CF_OPERATION_PARAMETERS.ACKDELETE
         {
-            Flags = CF_OPERATION_ACK_DELETE_FLAGS.CF_OPERATION_ACK_DELETE_FLAG_NONE,
-            CompletionStatus = NTStatus.STATUS_SUCCESS
+            CompletionStatus = NTStatus.STATUS_SUCCESS,
+            Flags = CF_OPERATION_ACK_DELETE_FLAGS.CF_OPERATION_ACK_DELETE_FLAG_NONE
         });
+
+
         CfExecute(opInfo, ref opParams);
     }
 
@@ -341,6 +346,16 @@ public class Program
     private static void CF_CALLBACK_TYPE_NOTIFY_RENAME(in CF_CALLBACK_INFO CallbackInfo, in CF_CALLBACK_PARAMETERS CallbackParameters)
     {
         Console.WriteLine("CF_CALLBACK_TYPE_NOTIFY_RENAME");
+
+        CF_OPERATION_INFO opInfo = CreateOPERATION_INFO(CallbackInfo, CF_OPERATION_TYPE.CF_OPERATION_TYPE_ACK_RENAME);
+
+        CF_OPERATION_PARAMETERS opParams = CF_OPERATION_PARAMETERS.Create(new CF_OPERATION_PARAMETERS.ACKRENAME
+        {
+            CompletionStatus = NTStatus.STATUS_SUCCESS,
+            Flags = CF_OPERATION_ACK_RENAME_FLAGS.CF_OPERATION_ACK_RENAME_FLAG_NONE
+        });
+
+        CfExecute(opInfo, ref opParams);
     }
 
     private static void CF_CALLBACK_TYPE_NOTIFY_RENAME_COMPLETION(in CF_CALLBACK_INFO CallbackInfo, in CF_CALLBACK_PARAMETERS CallbackParameters)
@@ -632,4 +647,9 @@ public class Program
         }
     }
 
+
+    public static void UpdateUI(string userFileSystemPath)
+    {
+        SHChangeNotify(SHCNE.SHCNE_UPDATEITEM, SHCNF.SHCNF_PATHW, userFileSystemPath, null);
+    }
 }
